@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Song Lyrics Finder</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* Gradient wave background animation */
+        body {
+            background: linear-gradient(45deg, #4b6cb7, #3161c1, #4b6cb7, #182848);
+            background-size: 400%;
+            animation: gradientWave 15s ease infinite;
+        }
+        @keyframes gradientWave {
+            0% {
+                background-position: 0% 50%;
+            }
+            50% {
+                background-position: 100% 50%;
+            }
+            100% {
+                background-position: 0% 50%;
+            }
+        }
+        /* Custom spinner */
+        .spinner {
+            border: 4px solid rgba(255, 255, 255, 0.3);
+            border-top: 4px solid #ffffff;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        /* Lyrics line styling */
+        .lyric-line {
+            display: block;
+            padding: 4px 8px;
+            transition: all 0.2s ease;
+        }
+        /* Progress bar styling */
+        .progress-container {
+            width: 100%;
+            height: 6px;
+            background-color: #e5e7eb;
+            border-radius: 3px;
+            overflow: hidden;
+            margin-bottom: 4px;
+        }
+        .progress-bar {
+            height: 100%;
+            background-color: #2563eb;
+            width: 0;
+            transition: width 0.2s ease;
+        }
+    </style>
+</head>
+<body class="min-h-screen flex items-center justify-center p-4">
+    <div class="w-full max-w-2xl bg-white bg-opacity-90 rounded-lg shadow-xl p-6">
+        <h1 class="text-3xl font-bold text-center text-gray-800 mb-6">Song Lyrics Finder</h1>
+        <div class="space-y-4 mb-6">
+            <input type="text" id="songName" placeholder="Enter song name (e.g., Tum Hi Ho)" required
+                   class="w-full p-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+            <input type="text" id="artistName" placeholder="Enter artist name (e.g., Arijit Singh)" required
+                   class="w-full p-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+            <button onclick="fetchLyrics()"
+                    class="w-full p-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition duration-300">
+                Search Lyrics
+            </button>
+        </div>
+        <div class="loading-container hidden flex-col items-center mb-6" id="loading">
+            <div class="spinner"></div>
+            <p class="text-white mt-2">Loading lyrics...</p>
+        </div>
+        <div class="progress-container">
+            <div class="progress-bar" id="progressBar"></div>
+        </div>
+        <div id="lyrics" class="bg-gray-100 rounded-lg max-h-96 overflow-y-auto text-gray-800 border border-gray-200 font-mono text-base leading-relaxed"></div>
+        <div id="error" class="mt-4 text-center text-red-600 font-semibold"></div>
+    </div>
+
+    <script>
+        // Function to clean lyrics: remove timestamps and return array of lines
+        function cleanLyrics(lyrics) {
+            if (!lyrics) return [];
+            // Remove timestamps like [mm:ss.ms] or [mm:ss]
+            return lyrics
+                .replace(/\[[\d:.]+\]/g, '') // Remove [00:12.34] or similar
+                .split('\n')
+                .map(line => line.trim())
+                .filter(line => line.length > 0); // Remove empty lines
+        }
+
+        // Function to update progress bar based on scroll position
+        function updateProgressBar() {
+            const lyricsDiv = document.getElementById('lyrics');
+            const progressBar = document.getElementById('progressBar');
+            const scrollTop = lyricsDiv.scrollTop;
+            const scrollHeight = lyricsDiv.scrollHeight - lyricsDiv.clientHeight;
+            const scrollPercentage = scrollHeight > 0 ? (scrollTop / scrollHeight) * 100 : 0;
+            progressBar.style.width = `${scrollPercentage}%`;
+        }
+
+        async function fetchLyrics() {
+            const songName = document.getElementById('songName').value.trim();
+            const artistName = document.getElementById('artistName').value.trim();
+            const lyricsDiv = document.getElementById('lyrics');
+            const errorDiv = document.getElementById('error');
+            const loadingDiv = document.getElementById('loading');
+
+            // Clear previous results
+            lyricsDiv.innerHTML = '';
+            errorDiv.textContent = '';
+            loadingDiv.classList.remove('hidden'); // Show loading animation
+
+            // Input validation
+            if (!songName || !artistName) {
+                errorDiv.textContent = 'Please enter both song name and artist name.';
+                loadingDiv.classList.add('hidden');
+                console.error('Input validation failed: Missing song or artist name.');
+                return;
+            }
+
+            // Basic input sanitization
+            if (songName.length > 100 || artistName.length > 100) {
+                errorDiv.textContent = 'Song or artist name is too long (max 100 characters).';
+                loadingDiv.classList.add('hidden');
+                console.error('Input validation failed: Input too long.');
+                return;
+            }
+
+            try {
+                console.log(`Searching for ${songName} by ${artistName}`);
+                const query = `${songName} ${artistName}`;
+                const url = `https://lrclib.net/api/search?q=${encodeURIComponent(query)}`;
+                const response = await fetch(url, { method: 'GET', mode: 'cors' });
+
+                if (!response.ok) {
+                    throw new Error(`HTTP error! Status: ${response.status}`);
+                }
+
+                const data = await response.json();
+
+                if (data && data.length > 0 && (data[0].syncedLyrics || data[0].plainLyrics)) {
+                    const rawLyrics = data[0].syncedLyrics || data[0].plainLyrics;
+                    const cleanedLines = cleanLyrics(rawLyrics);
+                    // Create a span for each line with hover effect
+                    lyricsDiv.innerHTML = cleanedLines
+                        .map(line => `<span class="lyric-line hover:bg-blue-100 hover:shadow-sm">${line}</span>`)
+                        .join('');
+                    console.log('Lyrics fetched and displayed with hover effect.');
+                    // Attach scroll event listener for progress bar
+                    lyricsDiv.addEventListener('scroll', updateProgressBar);
+                    // Initial progress bar update
+                    updateProgressBar();
+                } else {
+                    errorDiv.textContent = 'No lyrics found. Try a different spelling or a popular song like "Tum Hi Ho" by "Arijit Singh".';
+                    console.warn('No lyrics found in API response.');
+                }
+            } catch (error) {
+                let errorMessage = 'Unable to fetch lyrics. Please try again later.';
+                if (error.name === 'TypeError' && error.message.includes('Failed to fetch')) {
+                    errorMessage = 'Network error. Check your internet connection and try again.';
+                } else if (error.message.includes('HTTP error')) {
+                    errorMessage = `API request failed: ${error.message}. Try again later.`;
+                }
+                errorDiv.textContent = errorMessage;
+                console.error('Fetch error:', error.name, error.message, error.stack);
+            } finally {
+                loadingDiv.classList.add('hidden'); // Hide loading animation
+            }
+        }
+    </script>
+</body>
+</html>
